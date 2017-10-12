@@ -9,7 +9,7 @@ smtp: smtp.cc
 	g++ $< -lpthread -g -o $@
 
 pop3: pop3.cc
-	g++ $^ -I/opt/local/include/ -L/opt/local/bin/openssl -lcrypto -lpthread -g -o $@
+	g++ $^ -I/usr/local/opt/openssl/include -L/usr/local/opt/openssl/lib -lcrypto -lpthread -g -o $@
 
 pack:
 	rm -f submit-hw2.zip

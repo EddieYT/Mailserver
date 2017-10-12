@@ -46,6 +46,14 @@ void reset_data(thread_data* input) {
   input->content.clear();
   input->receivers.clear();
 }
+
+void send_back(int fd, char arr[], thread_data* td) {
+  if (td->vflag) {
+    fprintf(stderr, "[%d] S: %s", fd, arr);
+  }
+  send(fd, arr, strlen(arr), 0);
+}
+
 /*
 This function will process the command and send corresponding messages
 to the client.
@@ -53,13 +61,13 @@ If a "quit" command received, it returns true; otherwise, returns false.
  */
 bool process_command(thread_data* td, string command) {
   int* cfd = td->cfd;
-  if (td->vflag) fprintf(stderr, "[%d] C: %s\n", *cfd, command.c_str());
+  if (td->vflag) fprintf(stderr, "[%d] C: %s\n", *cfd, command.substr(0, command.length() - 2).c_str());
   // Keep reading data if it's at the DATA state.
   if (td->status == reading) {
     if (command == ".\r\n") {
       send_mail(td);
       reset_data(td);
-      send(*cfd, ok, strlen(ok), 0);
+      send_back(*cfd, ok, td);
       return false;
     } else if(command.length() == 6) {
       string cm_type = command.substr(0,4);
@@ -67,18 +75,16 @@ bool process_command(thread_data* td, string command) {
       if (cm_type == "RSET") {
         reset_data(td);
         td->status = init;
-        send(*cfd, ok, strlen(ok), 0);
+        send_back(*cfd, ok, td);
         return false;
       }
     }
     td->content += command;
-    cout << td->content << endl;
     return false;
   }
   // Start processing the current command.
   if (command.length() < 6) {
-    send(*cfd, err, strlen(err), 0);
-    if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, err);
+    send_back(*cfd, err, td);
     return false;
   }
   if (command.length() == 6) {
@@ -86,94 +92,87 @@ bool process_command(thread_data* td, string command) {
     transform(cm_type.begin(), cm_type.end(), cm_type.begin(), ::toupper);
     switch(hash_hit(cm_type)) {
       case (quit):
-        send(*cfd, farewell, strlen(farewell), 0);
-        if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, farewell);
+        send_back(*cfd, farewell, td);
         return true;
       case (rset):
         reset_data(td);
         td->status = init;
-        send(*cfd, ok, strlen(ok), 0);
+        send_back(*cfd, ok, td);
         break;
       case (noop):
-        send(*cfd, ok, strlen(ok), 0);
+        send_back(*cfd, ok, td);
         break;
       case (helo):
-        send(*cfd, err501, strlen(err501), 0);
+        send_back(*cfd, err501, td);
         break;
       case (data):
         switch(td->status) {
           case recving:
             td->status = reading;
-            send(*cfd, data354, strlen(data354), 0);
+            send_back(*cfd, data354, td);
             break;
           default:
-            send(*cfd, err503, strlen(err503), 0);
+            send_back(*cfd, err503, td);
         }
         break;
       default:
-        send(*cfd, err, strlen(err), 0);
+        send_back(*cfd, err, td);
     }
   } else {
     if(regex_search(command, matches, helo_reg)) {
       switch(td->status) {
         case init:
-          send(*cfd, helomsg, strlen(helomsg), 0);
+          send_back(*cfd, helomsg, td);
           break;
         default:
-          send(*cfd, err503, strlen(err503), 0);
+          send_back(*cfd, err503, td);
       }
-      cout << "Match found\n";
     } else if(regex_search(command, matches, mail_reg)) {
       string datetime = get_datetime();
       switch(td->status) {
         case init:
-          send(*cfd, ok, strlen(ok), 0);
+          send_back(*cfd, ok, td);
           td->status = mailing;
           td->sender = matches[1];
           td->content += "From <" + td->sender + "> " + datetime + "\r\n";
-          cout << td->content << endl;
           break;
         default:
-          send(*cfd, err503, strlen(err503), 0);
+          send_back(*cfd, err503, td);
       }
     } else if(regex_search(command, matches, rcpt_reg)) {
       switch(td->status) {
         case mailing:
           td->status = recving;
           if (!in_maillist(td, matches[1])) {
-            send(*cfd, err550, strlen(err550), 0);
+            send_back(*cfd, err550, td);
             break;
           }
           td->receivers.push_back(matches[1]);
-          send(*cfd, ok, strlen(ok), 0);
+          send_back(*cfd, ok, td);
           break;
         case recving:
           if (!in_maillist(td, matches[1])) {
-            send(*cfd, err550, strlen(err550), 0);
+            send_back(*cfd, err550, td);
             break;
           }
           td->receivers.push_back(matches[1]);
-          send(*cfd, ok, strlen(ok), 0);
+          send_back(*cfd, ok, td);
           break;
         default:
-          send(*cfd, err503, strlen(err503), 0);
+          send_back(*cfd, err503, td);
       }
-      cout << "Match found\n";
     } else if(regex_search(command, matches, data_reg)) {
       switch(td->status) {
         case recving:
           td->status = reading;
           td->content += matches[1];
-          send(*cfd, data354, strlen(data354), 0);
+          send_back(*cfd, data354, td);
           break;
         default:
-          send(*cfd, err503, strlen(err503), 0);
+          send_back(*cfd, err503, td);
       }
-      cout << "Match found\n";
     } else {
-      cout << "Match not found\n";
-      send(*cfd, err, strlen(err), 0);
-      if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, err);
+      send_back(*cfd, err, td);
     }
   }
   return false;

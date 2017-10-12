@@ -22,7 +22,6 @@ int send_mail(thread_data* td) {
     string cur_mail = cur.at(i);
     int found = cur_mail.find("@localhost");
     cur_mail.replace(cur_mail.begin() + found, cur_mail.end(), ".mbox");
-    cout << cur_mail << endl;
     // Open file and append content to the end
     string target("./");
     target.append(directory);
@@ -51,7 +50,6 @@ void get_mailinglist(thread_data* td) {
           string cur(ent->d_name);
           if(regex_search(cur, matches, mbox)) {
             td->maillist.push_back(cur);
-            cout << cur << endl;
           }
       }
   }

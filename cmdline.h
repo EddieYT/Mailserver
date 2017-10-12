@@ -31,13 +31,10 @@ void process_cml(int argc, char *argv[]) {
     exit(-1);
   }
   int count = 0;
-  while (optind < argc) {
-    if (argv[optind][0] != '-') directory = argv[optind];
-    count++;
-    optind++;
-  }
-  if (count > 1) {
-    cerr << "More than 1 non-option arguments." << endl;
+  if (optind < argc) {
+    directory = argv[optind];
+  } else {
+    cout << "Please enter a directory." << endl;
     exit(-1);
   }
 }

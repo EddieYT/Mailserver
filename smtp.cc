@@ -15,7 +15,7 @@
 #include <signal.h>
 #include <time.h>
 #include "thread_func.h"
-#include "commandline.h"
+#include "cmdline.h"
 using namespace std;
 
 extern char *optarg;
@@ -91,6 +91,10 @@ int main(int argc, char *argv[])
     td->cfd = cfd;
     td->status = init;
     get_mailinglist(td);
+    // Send the greeting message.
+    char greeting[] = "220 localhost service ready\r\n";
+    send(*cfd, greeting, strlen(greeting), 0);
+    if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, greeting);
     pthread_create(cur_thread, NULL, read_connection, (void*) td);
     threads.push_back(cur_thread);
     tds.push_back(td);

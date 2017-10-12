@@ -14,10 +14,6 @@ void* read_connection(void* input) {
   fd_set rfds;
   tv.tv_usec = 10;
   FD_ZERO(&rfds);
-  // Send the greeting message.
-  char greeting[] = "220 localhost service ready\r\n";
-  send(*cfd, greeting, strlen(greeting), 0);
-  if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, greeting);
   string command;
   int select_val;
   int valread;

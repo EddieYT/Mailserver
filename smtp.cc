@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <algorithm>
 #include <signal.h>
+#include <time.h>
 #include "thread_func.h"
 #include "commandline.h"
 using namespace std;
@@ -89,6 +90,7 @@ int main(int argc, char *argv[])
     td->vflag = vflag;
     td->cfd = cfd;
     td->status = init;
+    get_mailinglist(td);
     pthread_create(cur_thread, NULL, read_connection, (void*) td);
     threads.push_back(cur_thread);
     tds.push_back(td);

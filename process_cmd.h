@@ -1,4 +1,5 @@
 #include <regex>
+#include "process_mail.h"
 using namespace std;
 using namespace regex_constants;
 
@@ -10,6 +11,12 @@ char data354[] = "354 send the mail data, end with .\r\n";
 char farewell[] = "221 localhost Service closing transmission channel\r\n";
 char helomsg[] = "250 localhost\r\n";
 char ok[] = "250 OK\r\n";
+
+smatch matches;
+regex helo_reg ("helo .*\r\n$", ECMAScript | icase );
+regex mail_reg ("mail from:<(\\S+@localhost)>\r\n$", ECMAScript | icase );
+regex rcpt_reg ("rcpt to:<(\\S+@localhost)>\r\n$", ECMAScript | icase );
+regex data_reg ("data (.*\r\n)$", ECMAScript | icase );
 
 enum string_code {
   quit,
@@ -33,15 +40,6 @@ string_code hash_hit (string const& in_string){
   return error;
 };
 
-typedef struct thread_data {
-  int vflag;
-  int* cfd;
-  int status;
-  string sender;
-  string content;
-  vector<string> receivers;
-} thread_data;
-
 void reset_data(thread_data* input) {
   input->status = init;
   input->sender.clear();
@@ -58,15 +56,17 @@ bool process_command(thread_data* td, string command) {
   if (td->vflag) fprintf(stderr, "[%d] C: %s\n", *cfd, command.c_str());
   // Keep reading data if it's at the DATA state.
   if (td->status == reading) {
-    if (command == ".") {
+    if (command == ".\r\n") {
+      send_mail(td);
       reset_data(td);
       send(*cfd, ok, strlen(ok), 0);
       return false;
-    } else if(command.length() == 4) {
+    } else if(command.length() == 6) {
       string cm_type = command.substr(0,4);
       transform(cm_type.begin(), cm_type.end(), cm_type.begin(), ::toupper);
       if (cm_type == "RSET") {
         reset_data(td);
+        td->status = init;
         send(*cfd, ok, strlen(ok), 0);
         return false;
       }
@@ -76,12 +76,12 @@ bool process_command(thread_data* td, string command) {
     return false;
   }
   // Start processing the current command.
-  if (command.length() < 4) {
+  if (command.length() < 6) {
     send(*cfd, err, strlen(err), 0);
     if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, err);
     return false;
   }
-  if (command.length() == 4) {
+  if (command.length() == 6) {
     string cm_type = command.substr(0,4);
     transform(cm_type.begin(), cm_type.end(), cm_type.begin(), ::toupper);
     switch(hash_hit(cm_type)) {
@@ -91,6 +91,8 @@ bool process_command(thread_data* td, string command) {
         return true;
       case (rset):
         reset_data(td);
+        td->status = init;
+        send(*cfd, ok, strlen(ok), 0);
         break;
       case (noop):
         send(*cfd, ok, strlen(ok), 0);
@@ -112,12 +114,7 @@ bool process_command(thread_data* td, string command) {
         send(*cfd, err, strlen(err), 0);
     }
   } else {
-    smatch matches;
-    regex helo ("helo .*", ECMAScript | icase );
-    regex mail ("mail from:<(\\S+@localhost)>$", ECMAScript | icase );
-    regex rcpt ("rcpt to:<(\\S+@localhost)>$", ECMAScript | icase );
-    regex data ("data (.*)", ECMAScript | icase );
-    if(regex_search(command, matches, helo)) {
+    if(regex_search(command, matches, helo_reg)) {
       switch(td->status) {
         case init:
           send(*cfd, helomsg, strlen(helomsg), 0);
@@ -126,26 +123,35 @@ bool process_command(thread_data* td, string command) {
           send(*cfd, err503, strlen(err503), 0);
       }
       cout << "Match found\n";
-    } else if(regex_search(command, matches, mail)) {
+    } else if(regex_search(command, matches, mail_reg)) {
+      string datetime = get_datetime();
       switch(td->status) {
         case init:
           send(*cfd, ok, strlen(ok), 0);
           td->status = mailing;
           td->sender = matches[1];
-          cout << td->sender << endl;
+          td->content += "From <" + td->sender + "> " + datetime + "\r\n";
+          cout << td->content << endl;
           break;
         default:
           send(*cfd, err503, strlen(err503), 0);
       }
-      cout << "Match found\n";
-    } else if(regex_search(command, matches, rcpt)) {
+    } else if(regex_search(command, matches, rcpt_reg)) {
       switch(td->status) {
         case mailing:
           td->status = recving;
+          if (!in_maillist(td, matches[1])) {
+            send(*cfd, err550, strlen(err550), 0);
+            break;
+          }
           td->receivers.push_back(matches[1]);
           send(*cfd, ok, strlen(ok), 0);
           break;
         case recving:
+          if (!in_maillist(td, matches[1])) {
+            send(*cfd, err550, strlen(err550), 0);
+            break;
+          }
           td->receivers.push_back(matches[1]);
           send(*cfd, ok, strlen(ok), 0);
           break;
@@ -153,7 +159,7 @@ bool process_command(thread_data* td, string command) {
           send(*cfd, err503, strlen(err503), 0);
       }
       cout << "Match found\n";
-    } else if(regex_search(command, matches, data)) {
+    } else if(regex_search(command, matches, data_reg)) {
       switch(td->status) {
         case recving:
           td->status = reading;

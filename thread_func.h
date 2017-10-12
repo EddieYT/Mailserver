@@ -28,14 +28,11 @@ void* read_connection(void* input) {
     if ((select_val = select(*cfd + 1, &rfds, NULL, NULL, &tv)) > 0) {
       valread = read(*cfd, buffer, 256);
       for (int i = 0; i < valread; i++) {
-        if (buffer[i] == '\r') {
-          continue;
-        } else if (buffer[i] == '\n') {
+        command += string(1, buffer[i]);
+        if (buffer[i] == '\n') {
           quit_flag = process_command(td, command);
           if (quit_flag) break;
           command = "";
-        } else {
-          command += string(1, buffer[i]);
         }
       }
       memset(&buffer, 0, sizeof(buffer));

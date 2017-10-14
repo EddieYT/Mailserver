@@ -21,7 +21,10 @@ extern int optind, opterr, optopt;
 bool ctrlc_flag = false;
 vector<pthread_t*> threads;
 vector<thread_data*> tds;
+vector<string> maillist;
+map<string, string> users;
 int socket_fd;
+char* directory;
 
 /*
 This function will handle Ctrl + C and terminate all threads.

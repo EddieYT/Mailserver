@@ -1,4 +1,4 @@
-#include "process_cmd.h"
+#include "process_smtp.h"
 using namespace std;
 
 extern bool ctrlc_flag;

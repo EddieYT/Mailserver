@@ -27,6 +27,9 @@ int socket_fd;
 char* directory;
 vector<pthread_t*> threads;
 vector<thread_data*> tds;
+vector<string> maillist;
+map<string, string> users;
+char greeting[] = "220 localhost service ready\r\n";
 
 /*
 This function will handle Ctrl + C and terminate all threads.
@@ -50,6 +53,7 @@ int main(int argc, char *argv[])
 {
   // Process the command line arguments here
   process_cml(argc, argv);
+  get_mailinglist(maillist, users);
   // Create a socket as an endpoint
   socket_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -90,14 +94,12 @@ int main(int argc, char *argv[])
     td->vflag = vflag;
     td->cfd = cfd;
     td->status = init;
-    get_mailinglist(td);
-    // Send the greeting message.
-    char greeting[] = "220 localhost service ready\r\n";
-    send(*cfd, greeting, strlen(greeting), 0);
-    if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, greeting);
     pthread_create(cur_thread, NULL, read_connection, (void*) td);
     threads.push_back(cur_thread);
     tds.push_back(td);
+    // Send the greeting message.
+    send(*cfd, greeting, strlen(greeting), 0);
+    if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, greeting);
   }
   close(socket_fd);
   return 0;

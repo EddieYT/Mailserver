@@ -15,7 +15,7 @@
 #include <algorithm>
 #include <signal.h>
 #include <time.h>
-#include "thread_func.h"
+#include "thread_func_pop3.h"
 #include "cmdline.h"
 using namespace std;
 
@@ -28,6 +28,8 @@ int socket_fd;
 char* directory;
 vector<pthread_t*> threads;
 vector<thread_data*> tds;
+vector<string> maillist;
+map<string, string> users;
 char greeting[] = "+OK POP3 server ready\r\n";
 
 /*
@@ -51,7 +53,6 @@ void sig_handler(int sig)
 void computeDigest(char *data, int dataLengthBytes, unsigned char *digestBuffer)
 {
   /* The digest will be written to digestBuffer, which must be at least MD5_DIGEST_LENGTH bytes long */
-
   MD5_CTX c;
   MD5_Init(&c);
   MD5_Update(&c, data, dataLengthBytes);
@@ -62,6 +63,7 @@ int main(int argc, char *argv[])
 {
   // Process the command line arguments here
   process_cml(argc, argv);
+  get_mailinglist(maillist, users);
   // Create a socket as an endpoint
   socket_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -102,12 +104,12 @@ int main(int argc, char *argv[])
     td->vflag = vflag;
     td->cfd = cfd;
     td->status = init;
-    get_mailinglist(td);
-    send(*cfd, greeting, strlen(greeting), 0);
-    if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, greeting);
     pthread_create(cur_thread, NULL, read_connection, (void*) td);
     threads.push_back(cur_thread);
     tds.push_back(td);
+    // Send greeting msg to the client
+    send(*cfd, greeting, strlen(greeting), 0);
+    if (td->vflag) fprintf(stderr, "[%d] S: %s", *cfd, greeting);
   }
   close(socket_fd);
   return 0;

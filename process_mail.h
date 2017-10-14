@@ -1,9 +1,12 @@
 #include <dirent.h>
 #include <fstream>
+#include <map>
 using namespace std;
 using namespace regex_constants;
 
 extern char* directory;
+extern vector<string> maillist;
+extern map<string, string> users;
 
 typedef struct thread_data {
   int vflag;
@@ -12,8 +15,14 @@ typedef struct thread_data {
   string sender;
   string content;
   vector<string> receivers;
-  vector<string> maillist;
 } thread_data;
+
+bool has_user(string input) {
+  map<string, string>::iterator it;
+  it = users.find(input);
+  if (it == users.end()) return false;
+  return true;
+}
 
 int send_mail(thread_data* td) {
   vector<string>& cur = td->receivers;
@@ -36,7 +45,7 @@ int send_mail(thread_data* td) {
   return 1;
 }
 
-void get_mailinglist(thread_data* td) {
+void get_mailinglist(vector<string>& list, map<string, string>& users) {
   regex mbox (".+.mbox$", ECMAScript | icase );
   smatch matches;
   string buff("./");
@@ -47,9 +56,11 @@ void get_mailinglist(thread_data* td) {
       struct dirent *ent;
       while((ent = readdir(dir)) != NULL)
       {
-          string cur(ent->d_name);
-          if(regex_search(cur, matches, mbox)) {
-            td->maillist.push_back(cur);
+          string cur_dir(ent->d_name);
+          if(regex_search(cur_dir, matches, mbox)) {
+            list.push_back(cur_dir);
+            string cur_user = cur_dir.substr(0, cur_dir.find("."));
+            users[cur_user] = cur_dir;
           }
       }
   }
@@ -63,19 +74,5 @@ string get_datetime() {
   timeinfo = localtime (&rawtime);
   strftime (buffer,80,"%a %h %d %T %Y",timeinfo);
   string res(buffer);
-  return res;
-}
-
-bool in_maillist(thread_data* td, string receiver) {
-  int found = receiver.find("@localhost");
-  string target = receiver.substr(0, found) + ".mbox";
-  vector<string>& list = td->maillist;
-  bool res = false;
-  for (int i = 0; i < list.size(); i++) {
-    if (list.at(i) == target) {
-      res = true;
-      break;
-    }
-  }
   return res;
 }

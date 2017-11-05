@@ -17,6 +17,9 @@ typedef struct thread_data {
   vector<string> receivers;
 } thread_data;
 
+/*
+Return true if the user exists in mbox, otherwise return false;
+*/
 bool has_user(string input) {
   map<string, string>::iterator it;
   it = users.find(input);
@@ -24,6 +27,9 @@ bool has_user(string input) {
   return true;
 }
 
+/*
+Send data and update target mbox.
+*/
 int send_mail(thread_data* td) {
   vector<string>& cur = td->receivers;
   ofstream myfile;
@@ -45,6 +51,9 @@ int send_mail(thread_data* td) {
   return 1;
 }
 
+/*
+Get the whole mail list from the mbox directory
+*/
 void get_mailinglist(vector<string>& list, map<string, string>& users) {
   regex mbox (".+.mbox$", ECMAScript | icase );
   smatch matches;
@@ -66,6 +75,9 @@ void get_mailinglist(vector<string>& list, map<string, string>& users) {
   }
 }
 
+/*
+Retrieve a string with current datetime
+*/
 string get_datetime() {
   time_t rawtime;
   struct tm * timeinfo;

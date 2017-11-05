@@ -15,13 +15,16 @@ char pw_valid[] = "+OK password confirmed and maildrop is opened\r\n";
 char pw_invalid[] = "-ERR invalid password\r\n";
 char file_notopen[] = "-ERR file open fails\r\n";
 char no_msg[] = "-ERR no such message in maildrop\r\n";
-char noop[] = "+OK Nothing\r\n";
+char noop[] = "+OK \r\n";
 char update_err[] = "some deleted messages not removed\r\n";
 char mail_gone[] = "-ERR message already deleted\r\n";
 char mail_del[] = "+OK message deleted\r\n";
 char retr_msg[] = "+OK message follows\r\n";
 char end_msg[] = ".\r\n";
 
+/*
+Regex patterns for recognizing all commands
+*/
 regex user_reg ("^user (.+)\r\n$", ECMAScript | icase );
 regex pass_reg ("^pass (.+)\r\n$", ECMAScript | icase );
 regex quit_reg ("^quit\r\n$", ECMAScript | icase );
@@ -40,16 +43,97 @@ enum string_code {
   update,
 };
 
-void reset_data(thread_data* input) {
-  input->status = init;
-  input->login.clear();
-}
-
+/*
+Send back corresponding msg to client
+*/
 void send_back(int fd, char arr[], thread_data* td) {
   if (td->vflag) {
     fprintf(stderr, "[%d] S: %s", fd, arr);
   }
   send(fd, arr, strlen(arr), 0);
+}
+
+/* This handler funciton will deal with incoming "DELE" command*/
+void dele_handler(thread_data* td, smatch matches, int* cfd) {
+  string strnum = matches[1];
+  string uid;
+  int num;
+  switch(td->status) {
+    case trans:
+      num = stoi(strnum);
+      if (num > td->mails.size() || num <= 0) {
+        send_back(*cfd, no_msg, td);
+      } else {
+        if (td->del_set.find(get_uid(td->mails.at(num - 1))) != td->del_set.end()) {
+          send_back(*cfd, mail_gone, td);
+        } else {
+          uid = get_uid(td->mails.at(num - 1));
+          td->del_set.insert(uid);
+          td->length -= td->msg_mapping[uid].length();
+          send_back(*cfd, mail_del, td);
+        }
+      }
+      break;
+    default:
+      send_back(*cfd, bad_seq, td);
+  }
+}
+
+/* This handler funciton will deal with incoming "UIDL" command*/
+void uidl_handler(thread_data* td, smatch matches, int* cfd) {
+  string strnum = matches[1];
+  string buff;
+  char res[100];
+  int num;
+  switch(td->status) {
+    case trans:
+      if (strnum == "") {
+        send_back(*cfd, noop, td);
+        for (int i = 0; i < td->mails.size(); i++) {
+          if (is_deleted(td->mails.at(i), td)) continue;
+          buff = to_string(i+1) + " " + get_uid(td->mails.at(i)) + "\r\n";
+          strcpy(res, buff.c_str());
+          send_back(*cfd, res, td);
+        }
+        send_back(*cfd, end_msg, td);
+      } else {
+        num = stoi(strnum);
+        if (num > td->mails.size() || num <= 0) {
+          send_back(*cfd, no_msg, td);
+        } else {
+          if (is_deleted(td->mails.at(num - 1), td)) {
+            send_back(*cfd, mail_gone, td);
+            return;
+          }
+          buff = "+OK " + strnum + " " + get_uid(td->mails.at(num - 1)) + "\r\n";
+          strcpy(res, buff.c_str());
+          send_back(*cfd, res,td);
+        }
+      }
+      break;
+    default:
+      send_back(*cfd, bad_seq, td);
+  }
+}
+
+/* This handler funciton will deal with incoming "STAT" command*/
+void stat_handler(thread_data* td, smatch matches, int* cfd) {
+  string stat_ok;
+  char res[100];
+  switch(td->status) {
+    case trans:
+      td->length = 0;
+      for (int i = 0; i < td->mails.size(); i++) {
+        if (is_deleted(td->mails.at(i), td)) continue;
+        td->length += td->msgs.at(i).length();
+      }
+      stat_ok = "+OK " + to_string(td->mails.size() - td->del_set.size()) + " " + to_string(td->length) + "\r\n";
+      strcpy(res, stat_ok.c_str());
+      send_back(*cfd, res, td);
+      break;
+    default:
+      send_back(*cfd, bad_seq, td);
+  }
 }
 
 /* This handler funciton will deal with incoming "RETR" command*/
@@ -60,14 +144,14 @@ void retr_handler(thread_data* td, smatch matches, int* cfd) {
   switch(td->status) {
     case trans:
       num = stoi(strnum);
-      if (num > td->mails.size() || num <= 0) {
+      if (num > td->msgs.size() || num <= 0) {
         send_back(*cfd, no_msg, td);
       } else {
         if (td->del_set.find(get_uid(td->mails.at(num - 1))) != td->del_set.end()) {
           send_back(*cfd, mail_gone, td);
         } else {
           send_back(*cfd, retr_msg, td);
-          strcpy(res, td->mails.at(num - 1).c_str());
+          strcpy(res, td->msgs.at(num - 1).c_str());
           send_back(*cfd, res, td);
           send_back(*cfd, end_msg, td);
         }
@@ -89,6 +173,7 @@ void rset_handler(thread_data* td, smatch matches, int* cfd) {
       buff = "+OK " + to_string(num_msg) + " messages unmarked.\r\n";
       strcpy(res, buff.c_str());
       send_back(*cfd, res, td);
+      break;
     default:
       send_back(*cfd, bad_seq, td);
   }
@@ -103,10 +188,11 @@ void list_handler(thread_data* td, smatch matches, int* cfd) {
   switch(td->status) {
     case trans:
       if (strnum == "") {
-        buff = "+OK " + to_string(td->mails.size()) + " messages.\r\n";
+        buff = "+OK " + to_string(td->mails.size() - td->del_set.size()) + " messages.\r\n";
         strcpy(res, buff.c_str());
         send_back(*cfd, res, td);
         for (int i = 0; i < td->mails.size(); i++) {
+          if (is_deleted(td->mails.at(i), td)) continue;
           buff = to_string(i+1) + " " + to_string(td->mails.at(i).length()) + "\r\n";
           strcpy(res, buff.c_str());
           send_back(*cfd, res, td);
@@ -163,8 +249,9 @@ bool process_command(thread_data* td, string command) {
     char res[100];
     switch(td->status) {
       case trans:
+        if (td->del_set.size() == 0) return true;
         freopen(NULL, "w", td->myfile);
-        for (map<string, string>::iterator it=td->msg_mapping.begin(); it!=td->msg_mapping.end(); ++it) {
+        for (map<string, string>::iterator it=td->mail_mapping.begin(); it!=td->mail_mapping.end(); ++it) {
           if (td->del_set.find(it->first) == td->del_set.end()) {
             if (fputs(it->second.c_str(),td->myfile) == EOF) {
               send_back(*cfd, update_err, td);
@@ -205,64 +292,11 @@ bool process_command(thread_data* td, string command) {
         send_back(*cfd, bad_seq, td);
     }
   } else if(regex_search(command, matches, stat_reg)) {
-    string stat_ok;
-    char res[100];
-    switch(td->status) {
-      case trans:
-        stat_ok = "+OK " + to_string(td->mails.size()) + " " + to_string(td->size) + "\r\n";
-        strcpy(res, stat_ok.c_str());
-        send_back(*cfd, res, td);
-        break;
-      default:
-        send_back(*cfd, bad_seq, td);
-    }
+    stat_handler(td, matches, cfd);
   } else if(regex_search(command, matches, uidl_reg)) {
-    string strnum = matches[1];
-    string buff;
-    char res[100];
-    int num;
-    switch(td->status) {
-      case trans:
-        if (strnum == "") {
-          for (int i = 0; i < td->mails.size(); i++) {
-            buff = to_string(i+1) + " " + get_uid(td->mails.at(i)) + "\r\n";
-            strcpy(res, buff.c_str());
-            send_back(*cfd, res,td);
-          }
-        } else {
-          num = stoi(strnum);
-          if (num > td->mails.size() || num <= 0) {
-            send_back(*cfd, no_msg, td);
-          } else {
-            buff = strnum + " " + get_uid(td->mails.at(num - 1)) + "\r\n";
-            strcpy(res, buff.c_str());
-            send_back(*cfd, res,td);
-          }
-        }
-        break;
-      default:
-        send_back(*cfd, bad_seq, td);
-    }
+    uidl_handler(td, matches, cfd);
   } else if (regex_search(command, matches, dele_reg)) {
-    string strnum = matches[1];
-    int num;
-    switch(td->status) {
-      case trans:
-        num = stoi(strnum);
-        if (num > td->mails.size() || num <= 0) {
-          send_back(*cfd, no_msg, td);
-        } else {
-          if (td->del_set.find(get_uid(td->mails.at(num - 1))) != td->del_set.end()) {
-            send_back(*cfd, mail_gone, td);
-          } else {
-            td->del_set.insert(get_uid(td->mails.at(num - 1)));
-            send_back(*cfd, mail_del, td);
-          }
-        }
-        break;
-      default:
-        send_back(*cfd, bad_seq, td);
-    }
+    dele_handler(td, matches, cfd);
   } else if (regex_search(command, matches, retr_reg)) {
     retr_handler(td, matches, cfd);
   } else if (regex_search(command, matches, list_reg)) {

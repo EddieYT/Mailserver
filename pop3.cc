@@ -30,7 +30,7 @@ vector<pthread_t*> threads;
 vector<thread_data*> tds;
 vector<string> maillist;
 map<string, string> users;
-char greeting[] = "+OK POP3 server ready\r\n";
+char greeting[] = "+OK POP3 server ready (Author: Ying Tsai / yingt)\r\n";
 
 /*
 This function will handle Ctrl + C and terminate all threads.
@@ -104,6 +104,7 @@ int main(int argc, char *argv[])
     td->vflag = vflag;
     td->cfd = cfd;
     td->status = init;
+    td->length = 0;
     pthread_create(cur_thread, NULL, read_connection, (void*) td);
     threads.push_back(cur_thread);
     tds.push_back(td);

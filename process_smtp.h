@@ -12,6 +12,9 @@ char farewell[] = "221 localhost Service closing transmission channel\r\n";
 char helomsg[] = "250 localhost\r\n";
 char ok[] = "250 OK\r\n";
 
+/*
+Regex for recognizing different commands
+*/
 regex helo_reg ("helo .*\r\n$", ECMAScript | icase );
 regex mail_reg ("mail from:<(\\S+@localhost)>\r\n$", ECMAScript | icase );
 regex rcpt_reg ("rcpt to:<(\\S+@localhost)>\r\n$", ECMAScript | icase );
@@ -30,6 +33,9 @@ enum string_code {
   error,
 };
 
+/*
+This funciton checks if an input string has a hash hit.
+*/
 string_code hash_hit (string const& in_string){
   if(in_string == "QUIT") return quit;
   if(in_string == "RSET") return rset;
@@ -39,6 +45,9 @@ string_code hash_hit (string const& in_string){
   return error;
 };
 
+/*
+Clear the buffer data after rest command.
+*/
 void reset_data(thread_data* input) {
   input->status = init;
   input->sender.clear();

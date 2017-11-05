@@ -29,7 +29,7 @@ vector<pthread_t*> threads;
 vector<thread_data*> tds;
 vector<string> maillist;
 map<string, string> users;
-char greeting[] = "220 localhost service ready\r\n";
+char greeting[] = "220 localhost service ready (Author: Ying Tsai / yingt)\r\n";
 
 /*
 This function will handle Ctrl + C and terminate all threads.
